@@ -70,6 +70,9 @@ namespace Mesen.RetroAchievements
 		[DllImport(EmuApi.DllName)]
 		internal static extern void ReleaseDebugger();
 
+		[DllImport(EmuApi.DllName, EntryPoint = "GetMemoryValues")]
+		internal static extern void GetMemoryValues(MemoryType type, uint start, uint end, IntPtr output);
+
 		internal static string GetLastError() => Marshal.PtrToStringUTF8(MesenRA_GetLastError()) ?? "";
 		internal static string GetGameTitle() => Marshal.PtrToStringUTF8(MesenRA_GetGameTitle()) ?? "";
 	}
