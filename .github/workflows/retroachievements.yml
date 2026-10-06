@@ -30,7 +30,7 @@ jobs:
           msbuild-architecture: x64
 
       - name: Restore packages
-        run: dotnet restore -p:TargetFramework="net10.0" -r win-x64 -p:PublishAot="false" -p:BuildWithNetFrameworkHostedCompiler=true
+        run: dotnet restore -p:TargetFramework="net10.0" -r win-x64 -p:PublishAot="false" -p:SelfContained="true" -p:BuildWithNetFrameworkHostedCompiler=true
 
       - name: Write commit SHA1
         uses: ./.github/actions/build-sha1-action
@@ -56,8 +56,8 @@ jobs:
       - name: Build Mesen
         run: msbuild -nologo -v:m -m -p:Configuration=Release -p:Platform=x64 -t:Clean,UI -p:TargetFramework="net10.0" -p:OptimizeUi="true"
 
-      - name: Publish Mesen
-        run: dotnet publish --no-restore -c Release -p:PublishAot="false" -p:SelfContained="false" -p:PublishSingleFile="true" -p:OptimizeUi="true" -p:Platform="Any CPU" -p:TargetFramework="net10.0" -r win-x64 Mesen.sln /p:PublishProfile=UI\Properties\PublishProfiles\Release.pubxml
+      - name: Publish standalone Mesen
+        run: dotnet publish --no-restore -c Release -p:PublishAot="false" -p:SelfContained="true" -p:PublishSingleFile="true" -p:OptimizeUi="true" -p:Platform="Any CPU" -p:TargetFramework="net10.0" -r win-x64 Mesen.sln /p:PublishProfile=UI\Properties\PublishProfiles\Release.pubxml
 
       - name: Upload Mesen
         uses: actions/upload-artifact@v7
