@@ -20,13 +20,15 @@
 			<TextBlock Text="Use RetroAchievements directly inside MesenCE while keeping Mesen's normal settings and renderer." TextWrapping="Wrap" />
 
 			<c:OptionSection Header="Account">
-				<Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
-					<CheckBox Grid.ColumnSpan="2" Content="Enable RetroAchievements" IsChecked="{Binding Config.Enabled}" />
+				<Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+					<CheckBox Grid.ColumnSpan="3" Content="Enable RetroAchievements" IsChecked="{Binding Config.Enabled}" />
 					<TextBlock Grid.Row="1" Text="Username" VerticalAlignment="Center" />
-					<TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Config.Username}" />
-					<TextBlock Grid.Row="2" Text="Token" VerticalAlignment="Center" />
-					<TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Config.Token}" PasswordChar="●" />
-					<CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Hardcore mode (not available yet)" IsChecked="{Binding Config.HardcoreMode}" IsEnabled="False" />
+					<TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Config.Username}" />
+					<TextBlock Grid.Row="2" Text="Password" VerticalAlignment="Center" />
+					<TextBox x:Name="PasswordInput" Grid.Row="2" Grid.Column="1" PasswordChar="●" />
+					<Button Grid.Row="2" Grid.Column="2" Content="Sign in" Click="Login_OnClick" MinWidth="80" />
+					<TextBlock x:Name="LoginStatus" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="Sign in once. Mesen stores the returned login token, not your password." TextWrapping="Wrap" Opacity="0.75" />
+					<CheckBox Grid.Row="4" Grid.ColumnSpan="3" Content="Hardcore mode (not available yet)" IsChecked="{Binding Config.HardcoreMode}" IsEnabled="False" />
 				</Grid>
 			</c:OptionSection>
 
