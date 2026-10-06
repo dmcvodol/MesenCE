@@ -3,6 +3,9 @@ name: Build RetroAchievements Mesen
 on:
   push:
     branches: [retroachievements]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: retroachievements-${{ github.ref }}
@@ -45,12 +48,14 @@ jobs:
       - name: Build RetroAchievements bridge
         run: msbuild MesenRA\MesenRA.vcxproj -nologo -m -p:Configuration=Release -p:Platform=x64
 
-      - name: Verify RetroAchievements bridge
+      - name: Package RetroAchievements bridge
         shell: pwsh
         run: |
-          if (!(Test-Path "UI/Dependencies/MesenRA.dll")) {
-            throw "MesenRA.dll was not produced"
+          $bridge = "bin/win-x64/Release/MesenRA.dll"
+          if (!(Test-Path $bridge)) {
+            throw "MesenRA.dll was not produced at $bridge"
           }
+          Copy-Item $bridge "UI/Dependencies/MesenRA.dll" -Force
           Get-Item "UI/Dependencies/MesenRA.dll"
 
       - name: Build Mesen
