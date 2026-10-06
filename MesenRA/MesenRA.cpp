@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -28,8 +29,13 @@ static std::wstring Utf8ToWide(const char* text)
 		return L"";
 	}
 
-	std::wstring result((size_t)length - 1, L'\0');
-	MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), length);
+	std::wstring result((size_t)length, L'\0');
+	if(MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), length) == 0) {
+		return L"";
+	}
+	if(!result.empty() && result.back() == L'\0') {
+		result.pop_back();
+	}
 	return result;
 }
 
@@ -61,7 +67,7 @@ static void RC_CCONV ServerCall(const rc_api_request_t* request, rc_client_serve
 	parts.dwUrlPathLength = (DWORD)-1;
 	parts.dwExtraInfoLength = (DWORD)-1;
 
-	if(!WinHttpCrackUrl(url.c_str(), (DWORD)url.size(), 0, &parts)) {
+	if(url.empty() || !WinHttpCrackUrl(url.c_str(), (DWORD)url.size(), 0, &parts)) {
 		callback(&response, callbackData);
 		return;
 	}
@@ -78,6 +84,9 @@ static void RC_CCONV ServerCall(const rc_api_request_t* request, rc_client_serve
 		callback(&response, callbackData);
 		return;
 	}
+
+	DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
+	WinHttpSetOption(session, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
 
 	HINTERNET connection = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
 	if(connection == nullptr) {
@@ -103,7 +112,7 @@ static void RC_CCONV ServerCall(const rc_api_request_t* request, rc_client_serve
 	}
 
 	const char* postData = request->post_data;
-	DWORD postSize = postData != nullptr ? (DWORD)strlen(postData) : 0;
+	DWORD postSize = postData != nullptr ? (DWORD)std::strlen(postData) : 0;
 	BOOL sent = WinHttpSendRequest(httpRequest,
 		headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
 		headers.empty() ? 0 : (DWORD)-1L,
@@ -188,6 +197,7 @@ extern "C"
 		}
 
 		rc_client_set_event_handler(g_client, EventHandler);
+		// Keep softcore until Mesen-side hardcore restrictions are fully enforced.
 		rc_client_set_hardcore_enabled(g_client, 0);
 		return true;
 	}
@@ -200,6 +210,8 @@ extern "C"
 		}
 		g_readMemory = nullptr;
 		g_eventCallback = nullptr;
+		g_lastResult = 0;
+		g_lastError.clear();
 	}
 
 	__declspec(dllexport) void __cdecl MesenRA_SetHardcore(bool enabled)
@@ -211,7 +223,7 @@ extern "C"
 
 	__declspec(dllexport) bool __cdecl MesenRA_LoginWithToken(const char* username, const char* token)
 	{
-		if(g_client == nullptr || username == nullptr || token == nullptr) {
+		if(g_client == nullptr || username == nullptr || token == nullptr || *username == '\0' || *token == '\0') {
 			return false;
 		}
 		g_lastResult = -1;
