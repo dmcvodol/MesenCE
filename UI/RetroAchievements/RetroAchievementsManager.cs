@@ -1,28 +1,75 @@
 using Mesen.Config;
 using Mesen.Interop;
 using System;
+using System.IO;
+using System.Runtime.InteropServices;
 
 namespace Mesen.RetroAchievements
 {
 	/// <summary>
 	/// Owns the RetroAchievements runtime lifecycle for the standalone MesenCE frontend.
-	/// The actual rc_client bridge is added in the native integration layer; this class
-	/// already tracks the Mesen game/frame lifecycle so the bridge has one stable entry point.
+	/// NES is the first supported console in this experimental integration.
 	/// </summary>
 	public sealed class RetroAchievementsManager : IDisposable
 	{
+		private const uint RaConsoleNintendo = 7;
+
 		public static RetroAchievementsManager Instance { get; } = new();
 
 		private readonly NotificationListener _notifications;
+		private readonly MesenRAApi.ReadMemoryCallback _readMemoryCallback;
+		private readonly MesenRAApi.EventCallback _eventCallback;
 		private bool _gameLoaded;
+		private bool _nativeReady;
+		private bool _loggedIn;
 
 		private RetroAchievementsManager()
 		{
+			_readMemoryCallback = ReadMemory;
+			_eventCallback = OnRetroAchievementsEvent;
 			_notifications = new NotificationListener();
 			_notifications.OnNotification += OnNotification;
 		}
 
 		private bool Enabled => ConfigManager.Config.RetroAchievements.Enabled;
+
+		private bool EnsureNativeClient()
+		{
+			if(_nativeReady) {
+				return true;
+			}
+
+			try {
+				_nativeReady = MesenRAApi.MesenRA_Create(_readMemoryCallback, _eventCallback);
+				if(_nativeReady) {
+					MesenRAApi.MesenRA_SetHardcore(ConfigManager.Config.RetroAchievements.HardcoreMode);
+				}
+				return _nativeReady;
+			} catch(Exception ex) {
+				EmuApi.WriteLogEntry("RetroAchievements bridge initialization failed: " + ex.Message);
+				return false;
+			}
+		}
+
+		private bool EnsureLogin()
+		{
+			if(_loggedIn) {
+				return true;
+			}
+
+			RetroAchievementsConfig config = ConfigManager.Config.RetroAchievements;
+			if(string.IsNullOrWhiteSpace(config.Username) || string.IsNullOrWhiteSpace(config.Token)) {
+				return false;
+			}
+
+			MesenRAApi.MesenRA_SetHardcore(config.HardcoreMode);
+			_loggedIn = MesenRAApi.MesenRA_LoginWithToken(config.Username, config.Token);
+			if(!_loggedIn) {
+				string error = MesenRAApi.GetLastError();
+				EmuApi.WriteLogEntry("RetroAchievements login failed: " + error);
+			}
+			return _loggedIn;
+		}
 
 		private void OnNotification(NotificationEventArgs e)
 		{
@@ -32,67 +79,119 @@ namespace Mesen.RetroAchievements
 
 			switch(e.NotificationType) {
 				case ConsoleNotificationType.GameLoaded:
-					_gameLoaded = true;
 					OnGameLoaded();
 					break;
 
 				case ConsoleNotificationType.PpuFrameDone:
 					if(_gameLoaded) {
-						OnFrame();
+						MesenRAApi.MesenRA_DoFrame();
+					}
+					break;
+
+				case ConsoleNotificationType.GamePaused:
+					if(_gameLoaded) {
+						MesenRAApi.MesenRA_Idle();
 					}
 					break;
 
 				case ConsoleNotificationType.GameReset:
 					if(_gameLoaded) {
-						OnReset();
+						MesenRAApi.MesenRA_Reset();
 					}
 					break;
 
 				case ConsoleNotificationType.StateLoaded:
-					if(_gameLoaded) {
-						OnStateLoaded();
+					if(_gameLoaded && ConfigManager.Config.RetroAchievements.HardcoreMode) {
+						EmuApi.DisplayMessage("RetroAchievements", "Save states are not compatible with Hardcore mode in this experimental build.");
 					}
 					break;
 
 				case ConsoleNotificationType.BeforeGameUnload:
 				case ConsoleNotificationType.EmulationStopped:
-					if(_gameLoaded) {
-						OnGameUnloaded();
-						_gameLoaded = false;
-					}
+					OnGameUnloaded();
 					break;
 			}
 		}
 
-		private static void OnGameLoaded()
+		private void OnGameLoaded()
 		{
-			// TODO: call rc_client_begin_identify_and_load_game through the native bridge.
+			_gameLoaded = false;
+			if(!Enabled || !EnsureNativeClient() || !EnsureLogin()) {
+				return;
+			}
+
+			RomInfo romInfo = EmuApi.GetRomInfo();
+			if(romInfo.ConsoleType != ConsoleType.Nes) {
+				EmuApi.WriteLogEntry("RetroAchievements: console not supported by the experimental bridge yet: " + romInfo.ConsoleType);
+				return;
+			}
+
+			if(!File.Exists(romInfo.RomPath)) {
+				EmuApi.WriteLogEntry("RetroAchievements: ROM must currently be a plain file on disk: " + romInfo.RomPath);
+				return;
+			}
+
+			try {
+				byte[] romData = File.ReadAllBytes(romInfo.RomPath);
+				_gameLoaded = MesenRAApi.MesenRA_LoadGame(RaConsoleNintendo, romInfo.RomPath, romData, (UIntPtr)romData.Length);
+				if(_gameLoaded) {
+					string title = MesenRAApi.GetGameTitle();
+					EmuApi.WriteLogEntry("RetroAchievements game loaded: " + title);
+				} else {
+					EmuApi.WriteLogEntry("RetroAchievements game load failed: " + MesenRAApi.GetLastError());
+				}
+			} catch(Exception ex) {
+				EmuApi.WriteLogEntry("RetroAchievements game load exception: " + ex.Message);
+			}
 		}
 
-		private static void OnFrame()
+		private void OnGameUnloaded()
 		{
-			// TODO: call rc_client_do_frame through the native bridge.
+			if(_nativeReady && _gameLoaded) {
+				MesenRAApi.MesenRA_UnloadGame();
+			}
+			_gameLoaded = false;
 		}
 
-		private static void OnReset()
+		private static uint ReadMemory(uint address, IntPtr buffer, uint numBytes)
 		{
-			// rc_client keeps the active game; reset-specific state handling is added with the bridge.
+			if(buffer == IntPtr.Zero || numBytes == 0 || address >= 0x10000 || address + numBytes > 0x10000) {
+				return 0;
+			}
+
+			try {
+			{
+				byte[] values = DebugApi.GetMemoryValues(MemoryType.NesMemory, address, address + numBytes - 1);
+				Marshal.Copy(values, 0, buffer, values.Length);
+				return (uint)values.Length;
+			}
+			} catch {
+				return 0;
+			}
 		}
 
-		private static void OnStateLoaded()
+		private static void OnRetroAchievementsEvent(uint type, IntPtr titlePtr, IntPtr descriptionPtr, uint points)
 		{
-			// Hardcore mode will reject state loading. Softcore mode will notify rc_client here.
-		}
+			string title = Marshal.PtrToStringUTF8(titlePtr) ?? "";
+			string description = Marshal.PtrToStringUTF8(descriptionPtr) ?? "";
 
-		private static void OnGameUnloaded()
-		{
-			// TODO: unload the active rc_client game through the native bridge.
+			// RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED
+			if(type == 1 && ConfigManager.Config.RetroAchievements.ShowUnlockNotifications) {
+				string message = string.IsNullOrWhiteSpace(description)
+					? $"{title} (+{points})"
+					: $"{title} (+{points}) - {description}";
+				EmuApi.DisplayMessage("Achievement unlocked!", message);
+			}
 		}
 
 		public void Dispose()
 		{
 			_notifications.OnNotification -= OnNotification;
 			_notifications.Dispose();
+			if(_nativeReady) {
+				MesenRAApi.MesenRA_Destroy();
+				_nativeReady = false;
+			}
 		}
 	}
 }
