@@ -1,11 +1,13 @@
 #include <windows.h>
 #include <winhttp.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "rc_client.h"
+#include "rc_consoles.h"
 
 #pragma comment(lib, "winhttp.lib")
 
@@ -15,6 +17,7 @@ typedef void (__cdecl* MesenRAEventCallback)(uint32_t type, const char* title, c
 static rc_client_t* g_client = nullptr;
 static MesenRAReadMemoryCallback g_readMemory = nullptr;
 static MesenRAEventCallback g_eventCallback = nullptr;
+static uint32_t g_consoleId = RC_CONSOLE_UNKNOWN;
 static int g_lastResult = 0;
 static std::string g_lastError;
 
@@ -39,12 +42,57 @@ static std::wstring Utf8ToWide(const char* text)
 	return result;
 }
 
+static const rc_memory_region_t* FindMemoryRegion(uint32_t address)
+{
+	if(g_consoleId == RC_CONSOLE_UNKNOWN) {
+		return nullptr;
+	}
+
+	const rc_memory_regions_t* regions = rc_console_memory_regions(g_consoleId);
+	if(regions == nullptr || regions->region == nullptr) {
+		return nullptr;
+	}
+
+	for(uint32_t i = 0; i < regions->num_regions; i++) {
+		const rc_memory_region_t& region = regions->region[i];
+		if(address >= region.start_address && address <= region.end_address) {
+			return &region;
+		}
+	}
+	return nullptr;
+}
+
 static uint32_t RC_CCONV ReadMemory(uint32_t address, uint8_t* buffer, uint32_t numBytes, rc_client_t*)
 {
 	if(g_readMemory == nullptr || buffer == nullptr || numBytes == 0) {
 		return 0;
 	}
-	return g_readMemory(address, buffer, numBytes);
+
+	uint32_t totalRead = 0;
+	while(totalRead < numBytes) {
+		uint32_t logicalAddress = address + totalRead;
+		const rc_memory_region_t* region = FindMemoryRegion(logicalAddress);
+		if(region == nullptr) {
+			break;
+		}
+
+		uint32_t availableInRegion = region->end_address - logicalAddress + 1;
+		uint32_t chunkSize = std::min(numBytes - totalRead, availableInRegion);
+		if(region->type == RC_MEMORY_TYPE_UNUSED) {
+			std::memset(buffer + totalRead, 0, chunkSize);
+			totalRead += chunkSize;
+			continue;
+		}
+
+		uint32_t realAddress = region->real_address + (logicalAddress - region->start_address);
+		uint32_t read = g_readMemory(realAddress, buffer + totalRead, chunkSize);
+		totalRead += read;
+		if(read != chunkSize) {
+			break;
+		}
+	}
+
+	return totalRead;
 }
 
 static void RC_CCONV ServerCall(const rc_api_request_t* request, rc_client_server_callback_t callback, void* callbackData, rc_client_t*)
@@ -170,6 +218,9 @@ static void RC_CCONV EventHandler(const rc_client_event_t* event, rc_client_t*)
 	} else if(event->leaderboard != nullptr) {
 		title = event->leaderboard->title;
 		description = event->leaderboard->description;
+	} else if(event->server_error != nullptr) {
+		title = "RetroAchievements server error";
+		description = event->server_error->error_message;
 	}
 
 	g_eventCallback(event->type, title, description, points);
@@ -210,6 +261,7 @@ extern "C"
 		}
 		g_readMemory = nullptr;
 		g_eventCallback = nullptr;
+		g_consoleId = RC_CONSOLE_UNKNOWN;
 		g_lastResult = 0;
 		g_lastError.clear();
 	}
@@ -237,10 +289,15 @@ extern "C"
 		if(g_client == nullptr || data == nullptr || dataSize == 0) {
 			return false;
 		}
+		g_consoleId = consoleId;
 		g_lastResult = -1;
 		g_lastError.clear();
 		rc_client_begin_identify_and_load_game(g_client, consoleId, filePath, data, dataSize, AsyncResult, nullptr);
-		return g_lastResult == 0 && rc_client_is_game_loaded(g_client) != 0;
+		if(g_lastResult == 0 && rc_client_is_game_loaded(g_client) != 0) {
+			return true;
+		}
+		g_consoleId = RC_CONSOLE_UNKNOWN;
+		return false;
 	}
 
 	__declspec(dllexport) void __cdecl MesenRA_UnloadGame()
@@ -248,6 +305,7 @@ extern "C"
 		if(g_client != nullptr) {
 			rc_client_unload_game(g_client);
 		}
+		g_consoleId = RC_CONSOLE_UNKNOWN;
 	}
 
 	__declspec(dllexport) void __cdecl MesenRA_DoFrame()
