@@ -22,6 +22,7 @@ namespace Mesen.RetroAchievements
 		private bool _gameLoaded;
 		private bool _nativeReady;
 		private bool _loggedIn;
+		private bool _ownsDebugger;
 
 		private RetroAchievementsManager()
 		{
@@ -40,13 +41,29 @@ namespace Mesen.RetroAchievements
 			}
 
 			try {
+				// Mesen's MemoryDumper is owned by the debugger. Start it silently if the
+				// user has not already opened the debugger so rc_client can read NES RAM.
+				if(!MesenRAApi.IsDebuggerRunning()) {
+					MesenRAApi.InitializeDebugger();
+					_ownsDebugger = true;
+				}
+
 				_nativeReady = MesenRAApi.MesenRA_Create(_readMemoryCallback, _eventCallback);
 				if(_nativeReady) {
-					MesenRAApi.MesenRA_SetHardcore(ConfigManager.Config.RetroAchievements.HardcoreMode);
+					// Hardcore must stay disabled until save states, rewind and cheats are
+					// fully blocked according to RetroAchievements rules.
+					MesenRAApi.MesenRA_SetHardcore(false);
+				} else if(_ownsDebugger) {
+					MesenRAApi.ReleaseDebugger();
+					_ownsDebugger = false;
 				}
 				return _nativeReady;
 			} catch(Exception ex) {
 				EmuApi.WriteLogEntry("RetroAchievements bridge initialization failed: " + ex.Message);
+				if(_ownsDebugger) {
+					try { MesenRAApi.ReleaseDebugger(); } catch { }
+					_ownsDebugger = false;
+				}
 				return false;
 			}
 		}
@@ -59,10 +76,11 @@ namespace Mesen.RetroAchievements
 
 			RetroAchievementsConfig config = ConfigManager.Config.RetroAchievements;
 			if(string.IsNullOrWhiteSpace(config.Username) || string.IsNullOrWhiteSpace(config.Token)) {
+				EmuApi.WriteLogEntry("RetroAchievements: username/token not configured.");
 				return false;
 			}
 
-			MesenRAApi.MesenRA_SetHardcore(config.HardcoreMode);
+			MesenRAApi.MesenRA_SetHardcore(false);
 			_loggedIn = MesenRAApi.MesenRA_LoginWithToken(config.Username, config.Token);
 			if(!_loggedIn) {
 				string error = MesenRAApi.GetLastError();
@@ -100,12 +118,6 @@ namespace Mesen.RetroAchievements
 					}
 					break;
 
-				case ConsoleNotificationType.StateLoaded:
-					if(_gameLoaded && ConfigManager.Config.RetroAchievements.HardcoreMode) {
-						EmuApi.DisplayMessage("RetroAchievements", "Save states are not compatible with Hardcore mode in this experimental build.");
-					}
-					break;
-
 				case ConsoleNotificationType.BeforeGameUnload:
 				case ConsoleNotificationType.EmulationStopped:
 					OnGameUnloaded();
@@ -126,6 +138,16 @@ namespace Mesen.RetroAchievements
 				return;
 			}
 
+			if(romInfo.Format != RomFormat.iNes && romInfo.Format != RomFormat.Unif && romInfo.Format != RomFormat.VsSystem && romInfo.Format != RomFormat.VsDualSystem) {
+				EmuApi.WriteLogEntry("RetroAchievements: this NES file format is not supported yet: " + romInfo.Format);
+				return;
+			}
+
+			if(!string.IsNullOrWhiteSpace(romInfo.PatchPath)) {
+				EmuApi.WriteLogEntry("RetroAchievements: patched ROMs are not supported yet. Load the unpatched ROM for the first test.");
+				return;
+			}
+
 			if(!File.Exists(romInfo.RomPath)) {
 				EmuApi.WriteLogEntry("RetroAchievements: ROM must currently be a plain file on disk: " + romInfo.RomPath);
 				return;
@@ -137,6 +159,7 @@ namespace Mesen.RetroAchievements
 				if(_gameLoaded) {
 					string title = MesenRAApi.GetGameTitle();
 					EmuApi.WriteLogEntry("RetroAchievements game loaded: " + title);
+					EmuApi.DisplayMessage("RetroAchievements", "Connected: " + title);
 				} else {
 					EmuApi.WriteLogEntry("RetroAchievements game load failed: " + MesenRAApi.GetLastError());
 				}
@@ -155,16 +178,22 @@ namespace Mesen.RetroAchievements
 
 		private static uint ReadMemory(uint address, IntPtr buffer, uint numBytes)
 		{
-			if(buffer == IntPtr.Zero || numBytes == 0 || address >= 0x10000 || address + numBytes > 0x10000) {
+			ulong endExclusive = (ulong)address + numBytes;
+			if(buffer == IntPtr.Zero || numBytes == 0 || endExclusive > 0x10000UL) {
 				return 0;
 			}
 
 			try {
-			{
+				if(!MesenRAApi.IsDebuggerRunning()) {
+					return 0;
+				}
+
 				byte[] values = DebugApi.GetMemoryValues(MemoryType.NesMemory, address, address + numBytes - 1);
+				if(values.Length == 0) {
+					return 0;
+				}
 				Marshal.Copy(values, 0, buffer, values.Length);
 				return (uint)values.Length;
-			}
 			} catch {
 				return 0;
 			}
@@ -191,6 +220,10 @@ namespace Mesen.RetroAchievements
 			if(_nativeReady) {
 				MesenRAApi.MesenRA_Destroy();
 				_nativeReady = false;
+			}
+			if(_ownsDebugger) {
+				try { MesenRAApi.ReleaseDebugger(); } catch { }
+				_ownsDebugger = false;
 			}
 		}
 	}
