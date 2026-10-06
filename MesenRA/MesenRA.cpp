@@ -273,6 +273,26 @@ extern "C"
 		}
 	}
 
+	__declspec(dllexport) void __cdecl MesenRA_Logout()
+	{
+		if(g_client != nullptr) {
+			rc_client_logout(g_client);
+		}
+	}
+
+	__declspec(dllexport) bool __cdecl MesenRA_LoginWithPassword(const char* username, const char* password)
+	{
+		if(g_client == nullptr || username == nullptr || password == nullptr || *username == '\0' || *password == '\0') {
+			return false;
+		}
+
+		rc_client_logout(g_client);
+		g_lastResult = -1;
+		g_lastError.clear();
+		rc_client_begin_login_with_password(g_client, username, password, AsyncResult, nullptr);
+		return g_lastResult == 0 && rc_client_get_user_info(g_client) != nullptr;
+	}
+
 	__declspec(dllexport) bool __cdecl MesenRA_LoginWithToken(const char* username, const char* token)
 	{
 		if(g_client == nullptr || username == nullptr || token == nullptr || *username == '\0' || *token == '\0') {
@@ -281,7 +301,17 @@ extern "C"
 		g_lastResult = -1;
 		g_lastError.clear();
 		rc_client_begin_login_with_token(g_client, username, token, AsyncResult, nullptr);
-		return g_lastResult == 0;
+		return g_lastResult == 0 && rc_client_get_user_info(g_client) != nullptr;
+	}
+
+	__declspec(dllexport) const char* __cdecl MesenRA_GetUserToken()
+	{
+		if(g_client == nullptr) {
+			return "";
+		}
+
+		const rc_client_user_t* user = rc_client_get_user_info(g_client);
+		return user != nullptr && user->token != nullptr ? user->token : "";
 	}
 
 	__declspec(dllexport) bool __cdecl MesenRA_LoadGame(uint32_t consoleId, const char* filePath, const uint8_t* data, size_t dataSize)
