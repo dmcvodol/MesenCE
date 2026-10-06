@@ -26,19 +26,19 @@
 					<TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Config.Username}" />
 					<TextBlock Grid.Row="2" Text="Token" VerticalAlignment="Center" />
 					<TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Config.Token}" PasswordChar="●" />
-					<CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Hardcore mode" IsChecked="{Binding Config.HardcoreMode}" />
+					<CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Hardcore mode (not available yet)" IsChecked="{Binding Config.HardcoreMode}" IsEnabled="False" />
 				</Grid>
 			</c:OptionSection>
 
 			<c:OptionSection Header="Features">
 				<StackPanel Spacing="6">
 					<CheckBox Content="Show achievement unlock notifications" IsChecked="{Binding Config.ShowUnlockNotifications}" />
-					<CheckBox Content="Enable leaderboards" IsChecked="{Binding Config.EnableLeaderboards}" />
-					<CheckBox Content="Enable Rich Presence" IsChecked="{Binding Config.EnableRichPresence}" />
+					<CheckBox Content="Leaderboards control (coming later)" IsChecked="{Binding Config.EnableLeaderboards}" IsEnabled="False" />
+					<CheckBox Content="Rich Presence control (coming later)" IsChecked="{Binding Config.EnableRichPresence}" IsEnabled="False" />
 				</StackPanel>
 			</c:OptionSection>
 
-			<TextBlock Text="Status: client integration not connected yet. This page is the first stage of the native RetroAchievements build." TextWrapping="Wrap" Opacity="0.75" />
+			<TextBlock Text="Status: experimental Windows x64 / NES support. Login, game identification and achievement processing are connected. Use a plain, unpatched NES ROM for the first test." TextWrapping="Wrap" Opacity="0.75" />
 		</StackPanel>
 	</ScrollViewer>
 </UserControl>
