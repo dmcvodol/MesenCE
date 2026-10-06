@@ -25,10 +25,22 @@ namespace Mesen.RetroAchievements
 		internal static extern void MesenRA_SetHardcore([MarshalAs(UnmanagedType.I1)] bool enabled);
 
 		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+		internal static extern void MesenRA_Logout();
+
+		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+		[return: MarshalAs(UnmanagedType.I1)]
+		internal static extern bool MesenRA_LoginWithPassword(
+			[MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+			[MarshalAs(UnmanagedType.LPUTF8Str)] string password);
+
+		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
 		[return: MarshalAs(UnmanagedType.I1)]
 		internal static extern bool MesenRA_LoginWithToken(
 			[MarshalAs(UnmanagedType.LPUTF8Str)] string username,
 			[MarshalAs(UnmanagedType.LPUTF8Str)] string token);
+
+		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+		private static extern IntPtr MesenRA_GetUserToken();
 
 		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
 		[return: MarshalAs(UnmanagedType.I1)]
@@ -73,6 +85,7 @@ namespace Mesen.RetroAchievements
 		[DllImport(EmuApi.DllName, EntryPoint = "GetMemoryValues")]
 		internal static extern void GetMemoryValues(MemoryType type, uint start, uint end, IntPtr output);
 
+		internal static string GetUserToken() => Marshal.PtrToStringUTF8(MesenRA_GetUserToken()) ?? "";
 		internal static string GetLastError() => Marshal.PtrToStringUTF8(MesenRA_GetLastError()) ?? "";
 		internal static string GetGameTitle() => Marshal.PtrToStringUTF8(MesenRA_GetGameTitle()) ?? "";
 	}
