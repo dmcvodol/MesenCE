@@ -16,7 +16,7 @@ namespace Mesen.RetroAchievements
 
 		public static RetroAchievementsManager Instance { get; } = new();
 
-		private readonly NotificationListener _notifications;
+		private NotificationListener? _notifications;
 		private readonly MesenRAApi.ReadMemoryCallback _readMemoryCallback;
 		private readonly MesenRAApi.EventCallback _eventCallback;
 		private bool _gameLoaded;
@@ -28,6 +28,19 @@ namespace Mesen.RetroAchievements
 		{
 			_readMemoryCallback = ReadMemory;
 			_eventCallback = OnRetroAchievementsEvent;
+		}
+
+		/// <summary>
+		/// Registers for emulator notifications. This must only be called after
+		/// EmuApi.InitializeEmu has completed. Keeping it separate from construction
+		/// also allows account login from the first-run settings window.
+		/// </summary>
+		public void InitializeAfterEmulatorStartup()
+		{
+			if(_notifications != null) {
+				return;
+			}
+
 			_notifications = new NotificationListener();
 			_notifications.OnNotification += OnNotification;
 		}
@@ -265,8 +278,11 @@ namespace Mesen.RetroAchievements
 
 		public void Dispose()
 		{
-			_notifications.OnNotification -= OnNotification;
-			_notifications.Dispose();
+			if(_notifications != null) {
+				_notifications.OnNotification -= OnNotification;
+				_notifications.Dispose();
+				_notifications = null;
+			}
 			if(_nativeReady) {
 				MesenRAApi.MesenRA_Destroy();
 				_nativeReady = false;
