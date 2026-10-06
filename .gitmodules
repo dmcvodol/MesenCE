@@ -1,0 +1,4 @@
+[submodule "ThirdParty/rcheevos"]
+	path = ThirdParty/rcheevos
+	url = https://github.com/RetroAchievements/rcheevos.git
+	branch = develop
