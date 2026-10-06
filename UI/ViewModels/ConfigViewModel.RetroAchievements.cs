@@ -4,6 +4,6 @@ namespace Mesen.ViewModels
 {
 	public partial class ConfigViewModel
 	{
-		[ObservableProperty] public partial RetroAchievementsConfigViewModel RetroAchievements { get; set; } = new();
+		[ObservableProperty] public partial RetroAchievementsConfigViewModel? RetroAchievements { get; set; }
 	}
 }
