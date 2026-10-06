@@ -1,0 +1,44 @@
+<UserControl
+	xmlns="https://github.com/avaloniaui"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	xmlns:vm="using:Mesen.ViewModels"
+	xmlns:c="using:Mesen.Controls"
+	mc:Ignorable="d"
+	d:DesignWidth="500" d:DesignHeight="500"
+	x:DataType="vm:RetroAchievementsConfigViewModel"
+	x:Class="Mesen.Views.RetroAchievementsConfigView">
+
+	<Design.DataContext>
+		<vm:RetroAchievementsConfigViewModel />
+	</Design.DataContext>
+
+	<ScrollViewer AllowAutoHide="False" Padding="10">
+		<StackPanel Spacing="10">
+			<TextBlock Text="RetroAchievements" FontSize="20" FontWeight="Bold" />
+			<TextBlock Text="Use RetroAchievements directly inside MesenCE while keeping Mesen's normal settings and renderer." TextWrapping="Wrap" />
+
+			<c:OptionSection Header="Account">
+				<Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+					<CheckBox Grid.ColumnSpan="2" Content="Enable RetroAchievements" IsChecked="{Binding Config.Enabled}" />
+					<TextBlock Grid.Row="1" Text="Username" VerticalAlignment="Center" />
+					<TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Config.Username}" />
+					<TextBlock Grid.Row="2" Text="Token" VerticalAlignment="Center" />
+					<TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Config.Token}" PasswordChar="●" />
+					<CheckBox Grid.Row="3" Grid.ColumnSpan="2" Content="Hardcore mode" IsChecked="{Binding Config.HardcoreMode}" />
+				</Grid>
+			</c:OptionSection>
+
+			<c:OptionSection Header="Features">
+				<StackPanel Spacing="6">
+					<CheckBox Content="Show achievement unlock notifications" IsChecked="{Binding Config.ShowUnlockNotifications}" />
+					<CheckBox Content="Enable leaderboards" IsChecked="{Binding Config.EnableLeaderboards}" />
+					<CheckBox Content="Enable Rich Presence" IsChecked="{Binding Config.EnableRichPresence}" />
+				</StackPanel>
+			</c:OptionSection>
+
+			<TextBlock Text="Status: client integration not connected yet. This page is the first stage of the native RetroAchievements build." TextWrapping="Wrap" Opacity="0.75" />
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>
