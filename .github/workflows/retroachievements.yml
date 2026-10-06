@@ -48,15 +48,14 @@ jobs:
       - name: Build RetroAchievements bridge
         run: msbuild MesenRA\MesenRA.vcxproj -nologo -m -p:Configuration=Release -p:Platform=x64
 
-      - name: Package RetroAchievements bridge
+      - name: Verify RetroAchievements bridge
         shell: pwsh
         run: |
-          $bridge = "bin/win-x64/Release/MesenRA.dll"
+          $bridge = "UI/Dependencies/MesenRA.dll"
           if (!(Test-Path $bridge)) {
             throw "MesenRA.dll was not produced at $bridge"
           }
-          Copy-Item $bridge "UI/Dependencies/MesenRA.dll" -Force
-          Get-Item "UI/Dependencies/MesenRA.dll"
+          Get-Item $bridge
 
       - name: Build Mesen
         run: msbuild -nologo -v:m -m -p:Configuration=Release -p:Platform=x64 -t:Clean,UI -p:TargetFramework="net10.0" -p:OptimizeUi="true"
