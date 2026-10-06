@@ -3,8 +3,6 @@ name: Build RetroAchievements Mesen
 on:
   push:
     branches: [retroachievements]
-  pull_request:
-    branches: [master]
 
 concurrency:
   group: retroachievements-${{ github.ref }}
@@ -12,7 +10,7 @@ concurrency:
 
 jobs:
   windows-retroachievements:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-2025
 
     steps:
       - name: Checkout repo with rcheevos
