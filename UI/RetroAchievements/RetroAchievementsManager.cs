@@ -41,29 +41,76 @@ namespace Mesen.RetroAchievements
 			}
 
 			try {
-				// Mesen's MemoryDumper is owned by the debugger. Start it silently if the
-				// user has not already opened the debugger so rc_client can read NES RAM.
-				if(!MesenRAApi.IsDebuggerRunning()) {
-					MesenRAApi.InitializeDebugger();
-					_ownsDebugger = true;
-				}
-
 				_nativeReady = MesenRAApi.MesenRA_Create(_readMemoryCallback, _eventCallback);
 				if(_nativeReady) {
 					// Hardcore must stay disabled until save states, rewind and cheats are
 					// fully blocked according to RetroAchievements rules.
 					MesenRAApi.MesenRA_SetHardcore(false);
-				} else if(_ownsDebugger) {
-					MesenRAApi.ReleaseDebugger();
-					_ownsDebugger = false;
 				}
 				return _nativeReady;
 			} catch(Exception ex) {
 				EmuApi.WriteLogEntry("RetroAchievements bridge initialization failed: " + ex.Message);
-				if(_ownsDebugger) {
-					try { MesenRAApi.ReleaseDebugger(); } catch { }
-					_ownsDebugger = false;
+				return false;
+			}
+		}
+
+		private bool EnsureMemoryAccess()
+		{
+			try {
+				if(MesenRAApi.IsDebuggerRunning()) {
+					return true;
 				}
+
+				// Mesen's MemoryDumper is owned by the debugger. Start it silently only
+				// when a supported game actually needs achievement memory reads.
+				MesenRAApi.InitializeDebugger();
+				_ownsDebugger = true;
+				return MesenRAApi.IsDebuggerRunning();
+			} catch(Exception ex) {
+				EmuApi.WriteLogEntry("RetroAchievements memory access initialization failed: " + ex.Message);
+				return false;
+			}
+		}
+
+		public bool TryLoginWithPassword(string username, string password, out string token, out string error)
+		{
+			token = "";
+			error = "";
+
+			if(string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password)) {
+				error = "Enter your RetroAchievements username and password.";
+				return false;
+			}
+
+			try {
+				if(!EnsureNativeClient()) {
+					error = "RetroAchievements bridge could not be initialized.";
+					return false;
+				}
+
+				MesenRAApi.MesenRA_SetHardcore(false);
+				_loggedIn = MesenRAApi.MesenRA_LoginWithPassword(username.Trim(), password);
+				if(!_loggedIn) {
+					error = MesenRAApi.GetLastError();
+					if(string.IsNullOrWhiteSpace(error)) {
+						error = "Login failed.";
+					}
+					return false;
+				}
+
+				token = MesenRAApi.GetUserToken();
+				if(string.IsNullOrWhiteSpace(token)) {
+					MesenRAApi.MesenRA_Logout();
+					_loggedIn = false;
+					error = "RetroAchievements did not return a login token.";
+					return false;
+				}
+
+				return true;
+			} catch(Exception ex) {
+				_loggedIn = false;
+				error = ex.Message;
+				EmuApi.WriteLogEntry("RetroAchievements password login failed: " + ex.Message);
 				return false;
 			}
 		}
@@ -76,7 +123,7 @@ namespace Mesen.RetroAchievements
 
 			RetroAchievementsConfig config = ConfigManager.Config.RetroAchievements;
 			if(string.IsNullOrWhiteSpace(config.Username) || string.IsNullOrWhiteSpace(config.Token)) {
-				EmuApi.WriteLogEntry("RetroAchievements: username/token not configured.");
+				EmuApi.WriteLogEntry("RetroAchievements: account is not signed in.");
 				return false;
 			}
 
@@ -150,6 +197,11 @@ namespace Mesen.RetroAchievements
 
 			if(!File.Exists(romInfo.RomPath)) {
 				EmuApi.WriteLogEntry("RetroAchievements: ROM must currently be a plain file on disk: " + romInfo.RomPath);
+				return;
+			}
+
+			if(!EnsureMemoryAccess()) {
+				EmuApi.WriteLogEntry("RetroAchievements: could not initialize emulator memory access.");
 				return;
 			}
 
