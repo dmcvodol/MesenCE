@@ -1,0 +1,56 @@
+name: Build RetroAchievements Mesen
+
+on:
+  push:
+    branches: [retroachievements]
+  pull_request:
+    branches: [master]
+
+jobs:
+  windows-retroachievements:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout repo with rcheevos
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.x
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+        with:
+          msbuild-architecture: x64
+
+      - name: Restore packages
+        run: dotnet restore -p:TargetFramework="net10.0" -r win-x64 -p:PublishAot="false" -p:BuildWithNetFrameworkHostedCompiler=true
+
+      - name: Write commit SHA1
+        uses: ./.github/actions/build-sha1-action
+
+      - name: Get librashader library
+        uses: ./.github/actions/get-librashader-action
+        with:
+          url: 'librashader-x64-windows.zip'
+          file: 'librashader.dll'
+          dest: './UI/Dependencies/'
+
+      - name: Build RetroAchievements bridge
+        run: msbuild MesenRA\MesenRA.vcxproj -nologo -m -p:Configuration=Release -p:Platform=x64
+
+      - name: Build Mesen
+        run: msbuild -nologo -v:m -m -p:Configuration=Release -p:Platform=x64 -t:Clean,UI -p:TargetFramework="net10.0" -p:OptimizeUi="true"
+
+      - name: Publish Mesen
+        run: dotnet publish --no-restore -c Release -p:PublishAot="false" -p:SelfContained="false" -p:PublishSingleFile="true" -p:OptimizeUi="true" -p:Platform="Any CPU" -p:TargetFramework="net10.0" -r win-x64 Mesen.sln /p:PublishProfile=UI\Properties\PublishProfiles\Release.pubxml
+
+      - name: Upload Mesen
+        uses: actions/upload-artifact@v7
+        with:
+          name: MesenCE-RetroAchievements-Windows
+          path: build/TmpReleaseBuild/Mesen.exe
