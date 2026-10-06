@@ -188,12 +188,8 @@ namespace Mesen.RetroAchievements
 					return 0;
 				}
 
-				byte[] values = DebugApi.GetMemoryValues(MemoryType.NesMemory, address, address + numBytes - 1);
-				if(values.Length == 0) {
-					return 0;
-				}
-				Marshal.Copy(values, 0, buffer, values.Length);
-				return (uint)values.Length;
+				MesenRAApi.GetMemoryValues(MemoryType.NesMemory, address, address + numBytes - 1, buffer);
+				return numBytes;
 			} catch {
 				return 0;
 			}
@@ -210,6 +206,8 @@ namespace Mesen.RetroAchievements
 					? $"{title} (+{points})"
 					: $"{title} (+{points}) - {description}";
 				EmuApi.DisplayMessage("Achievement unlocked!", message);
+			} else if(type == 16) {
+				EmuApi.WriteLogEntry("RetroAchievements server error: " + description);
 			}
 		}
 
