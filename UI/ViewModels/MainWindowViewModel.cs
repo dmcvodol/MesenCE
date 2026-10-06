@@ -60,7 +60,7 @@ namespace Mesen.ViewModels
 		public void Init(MainWindow wnd)
 		{
 			MainMenu.Initialize(wnd);
-			_ = RetroAchievementsManager.Instance;
+			RetroAchievementsManager.Instance.InitializeAfterEmulatorStartup();
 			RecentGames.Init(GameScreenMode.RecentGames);
 
 			AddDisposable(RecentGames.ObserveProp(nameof(RecentGamesViewModel.Visible), () => {
