@@ -60,6 +60,16 @@ namespace Mesen.RetroAchievements
 		[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
 		private static extern IntPtr MesenRA_GetGameTitle();
 
+		[DllImport(EmuApi.DllName)]
+		[return: MarshalAs(UnmanagedType.I1)]
+		internal static extern bool IsDebuggerRunning();
+
+		[DllImport(EmuApi.DllName)]
+		internal static extern void InitializeDebugger();
+
+		[DllImport(EmuApi.DllName)]
+		internal static extern void ReleaseDebugger();
+
 		internal static string GetLastError() => Marshal.PtrToStringUTF8(MesenRA_GetLastError()) ?? "";
 		internal static string GetGameTitle() => Marshal.PtrToStringUTF8(MesenRA_GetGameTitle()) ?? "";
 	}
