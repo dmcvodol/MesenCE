@@ -62,6 +62,7 @@ namespace Mesen.ViewModels
 				case ConfigWindowTab.Sms: Sms ??= AddDisposable(new SmsConfigViewModel()); break;
 				case ConfigWindowTab.Ws: Ws ??= AddDisposable(new WsConfigViewModel()); break;
 				case ConfigWindowTab.OtherConsoles: OtherConsoles ??= AddDisposable(new OtherConsolesConfigViewModel()); break;
+				case ConfigWindowTab.RetroAchievements: RetroAchievements ??= AddDisposable(new RetroAchievementsConfigViewModel()); break;
 
 				case ConfigWindowTab.Preferences: Preferences ??= AddDisposable(new PreferencesConfigViewModel()); break;
 			}
@@ -90,6 +91,7 @@ namespace Mesen.ViewModels
 			ConfigManager.Config.PcEngine = PcEngine?.OriginalConfig ?? ConfigManager.Config.PcEngine;
 			ConfigManager.Config.Sms = Sms?.OriginalConfig ?? ConfigManager.Config.Sms;
 			ConfigManager.Config.Cv = OtherConsoles?.CvOriginalConfig ?? ConfigManager.Config.Cv;
+			ConfigManager.Config.RetroAchievements = RetroAchievements?.OriginalConfig ?? ConfigManager.Config.RetroAchievements;
 			ConfigManager.Config.ApplyConfig();
 			ConfigManager.Config.Save();
 		}
@@ -109,7 +111,8 @@ namespace Mesen.ViewModels
 				PcEngine?.OriginalConfig.IsIdentical(ConfigManager.Config.PcEngine) == false ||
 				Sms?.OriginalConfig.IsIdentical(ConfigManager.Config.Sms) == false ||
 				Ws?.OriginalConfig.IsIdentical(ConfigManager.Config.Ws) == false ||
-				OtherConsoles?.CvOriginalConfig.IsIdentical(ConfigManager.Config.Cv) == false
+				OtherConsoles?.CvOriginalConfig.IsIdentical(ConfigManager.Config.Cv) == false ||
+				RetroAchievements?.OriginalConfig.IsIdentical(ConfigManager.Config.RetroAchievements) == false
 			);
 		}
 	}
@@ -130,6 +133,7 @@ namespace Mesen.ViewModels
 		Ws = 11,
 		OtherConsoles = 12,
 		//separator
-		Preferences = 14
+		Preferences = 14,
+		RetroAchievements = 15
 	}
 }
