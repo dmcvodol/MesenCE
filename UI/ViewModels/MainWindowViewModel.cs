@@ -5,6 +5,7 @@ using Mesen.Config;
 using Mesen.Controls;
 using Mesen.Interop;
 using Mesen.Localization;
+using Mesen.RetroAchievements;
 using Mesen.Utilities;
 using Mesen.Windows;
 using System;
@@ -59,6 +60,7 @@ namespace Mesen.ViewModels
 		public void Init(MainWindow wnd)
 		{
 			MainMenu.Initialize(wnd);
+			_ = RetroAchievementsManager.Instance;
 			RecentGames.Init(GameScreenMode.RecentGames);
 
 			AddDisposable(RecentGames.ObserveProp(nameof(RecentGamesViewModel.Visible), () => {
