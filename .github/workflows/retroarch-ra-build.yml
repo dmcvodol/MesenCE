@@ -1,0 +1,77 @@
+name: RetroArch RAIntegration x64 Build
+
+on:
+  push:
+    branches: [retroarch-ra-build-clean]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout helper
+        uses: actions/checkout@v5
+
+      - name: Clone RetroArch
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/libretro/RetroArch.git RetroArch
+          git -C RetroArch rev-parse HEAD
+
+      - name: Patch RetroArch
+        shell: pwsh
+        run: |
+          python tools/retroarch_ra_patch.py
+          git -C RetroArch diff --check
+
+      - name: Set up MSYS2 MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+          pacboy: >-
+            cc:p
+            gettext:p
+
+      - name: Configure
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: ./configure
+
+      - name: Build
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          make -j"$(nproc)" info all
+          test -f retroarch.exe
+
+      - name: Verify
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          strings retroarch.exe | grep -F "RAIntegration" | head -20 || true
+          objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
+
+      - name: Package
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp retroarch.exe dist/retroarch-ra.exe
+          ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
+          git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
+          printf '%s\n' 'Put RA_Integration-x64.dll next to retroarch-ra.exe.' 'This is a custom RetroArch RAIntegration test build.' > dist/README_RA.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroArch-RAIntegration-x64
+          path: RetroArch/dist/
+          retention-days: 7
