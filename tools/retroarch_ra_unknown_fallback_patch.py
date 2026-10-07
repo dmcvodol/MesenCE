@@ -40,5 +40,5 @@ replace_once(
 '''   user = rc_client_get_user_info(client);\n#ifdef RC_CLIENT_SUPPORTS_RAINTEGRATION\n   if (user && rcheevos_ra_pending_unknown_hash[0])\n   {\n      char pending_hash[sizeof(rcheevos_ra_pending_unknown_hash)];\n      unsigned int selected_game_id;\n      strlcpy(pending_hash, rcheevos_ra_pending_unknown_hash, sizeof(pending_hash));\n      selected_game_id = rcheevos_ra_show_unknown_title(pending_hash);\n      rcheevos_ra_diag("LEGACY_RESUME_AFTER_LOGIN", (int)selected_game_id, pending_hash);\n   }\n#endif\n   if (!user)\n''',
 'resume Unknown Title after normal login')
 
-p.write_text(s, encoding='utf-8', newline='\\n')
+p.write_text(s, encoding='utf-8')
 print('Deferred Unknown Title fallback applied; no manual RAIntegration login is used.')
