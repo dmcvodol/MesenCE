@@ -25,6 +25,7 @@ jobs:
         shell: pwsh
         run: |
           python tools/retroarch_ra_patch.py
+          python tools/retroarch_ra_diag_patch.py
           git -C RetroArch diff --check
 
       - name: Set up MSYS2 MINGW64
@@ -67,7 +68,7 @@ jobs:
           cp retroarch.exe dist/retroarch-ra.exe
           ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
           git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
-          printf '%s\n' 'Put RA_Integration-x64.dll next to retroarch-ra.exe.' 'This is a custom RetroArch RAIntegration test build.' > dist/README_RA.txt
+          printf '%s\n' 'Put RA_Integration-x64.dll next to retroarch-ra.exe.' 'This build writes RA_DIAG.txt while loading RetroAchievements/RAIntegration.' > dist/README_RA.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
