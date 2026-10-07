@@ -27,7 +27,7 @@ c = cheevos.read_text(encoding='utf-8')
 c = replace_once(c, '#include <file/file_path.h>\n',
 '#include <file/file_path.h>\n#ifdef RC_CLIENT_SUPPORTS_RAINTEGRATION\n#include <encodings/utf.h>\n#endif\n', 'UTF include')
 c = replace_once(c, '#include "../audio/audio_driver.h"\n',
-'#include "../audio/audio_driver.h"\n#ifdef RC_CLIENT_SUPPORTS_RAINTEGRATION\n#include "../gfx/video_driver.h"\n#include "../deps/rcheevos/include/rc_client_raintegration.h"\n#endif\n', 'RAIntegration includes')
+'#include "../audio/audio_driver.h"\n#ifdef RC_CLIENT_SUPPORTS_RAINTEGRATION\n#include "../gfx/video_driver.h"\n#include "../deps/rcheevos/include/rc_client_raintegration.h"\n#include "../version.all"\n#endif\n', 'RAIntegration includes')
 c = replace_once(c,
 '''   false /* badges_loading */\n};\n\nrcheevos_locals_t* get_rcheevos_locals(void)\n''',
 '''   false /* badges_loading */\n};\n\n#ifdef RC_CLIENT_SUPPORTS_RAINTEGRATION\nstatic bool rcheevos_raintegration_attempted;\nstatic bool rcheevos_raintegration_pending;\nstatic char rcheevos_raintegration_pending_path[PATH_MAX_LENGTH];\n#endif\n\nrcheevos_locals_t* get_rcheevos_locals(void)\n''', 'RAIntegration state')
