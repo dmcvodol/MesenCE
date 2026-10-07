@@ -1,0 +1,100 @@
+name: RetroArch RAIntegration x64 Build
+
+on:
+  push:
+    branches:
+      - retroarch-ra-build
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout build helper branch
+        uses: actions/checkout@v5
+        with:
+          ref: retroarch-ra-build
+
+      - name: Clone current RetroArch master
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/libretro/RetroArch.git RetroArch
+          git -C RetroArch rev-parse HEAD
+
+      - name: Apply RAIntegration patch
+        shell: pwsh
+        run: |
+          python tools/retroarch_ra_patch.py
+          git -C RetroArch diff --check
+          git -C RetroArch diff -- Makefile.common cheevos/cheevos.c
+
+      - name: Set up MSYS2 MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+          pacboy: >-
+            cc:p
+            gettext:p
+
+      - name: Configure RetroArch
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          ./configure
+          grep -E '^(HAVE_CHEEVOS|HAVE_NETWORKING|HAVE_THREADS|OS)=' config.mk || true
+
+      - name: Build RetroArch x64
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          make -j"$(nproc)" info all
+          test -f retroarch.exe
+
+      - name: Verify RAIntegration support was linked
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          strings retroarch.exe | grep -F "RAIntegration" | head -20 || true
+          objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
+
+      - name: Package build
+        shell: msys2 {0}
+        working-directory: RetroArch
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp retroarch.exe dist/retroarch-ra.exe
+          ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
+          git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
+          cat > dist/README_RA.txt <<'EOF'
+          RetroArch RAIntegration prototype x64
+          =====================================
+
+          This build contains the RetroArch-side RAIntegration client support.
+
+          IMPORTANT:
+          Put RA_Integration-x64.dll in the SAME folder as retroarch-ra.exe.
+          Then enable RetroAchievements in RetroArch and launch a ROM.
+
+          Known/official hashes follow normal RetroAchievements behavior.
+          Unknown hashes can be handled by RAIntegration's Unknown Title /
+          compatibility-test flow when the DLL is available.
+
+          This is a custom prototype build for compatibility testing.
+          Keep your normal RetroArch installation as a backup.
+          EOF
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroArch-RAIntegration-x64
+          path: RetroArch/dist/
+          retention-days: 7
