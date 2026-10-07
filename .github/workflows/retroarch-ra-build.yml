@@ -26,6 +26,7 @@ jobs:
         run: |
           python tools/retroarch_ra_patch.py
           python tools/retroarch_ra_diag_patch.py
+          python tools/retroarch_ra_unknown_fallback_patch.py
           git -C RetroArch diff --check
 
       - name: Set up MSYS2 MINGW64
@@ -56,7 +57,7 @@ jobs:
         shell: msys2 {0}
         working-directory: RetroArch
         run: |
-          strings retroarch.exe | grep -F "RAIntegration" | head -20 || true
+          strings retroarch.exe | grep -E "RAIntegration|_RA_IdentifyHash|LEGACY_IDENTIFY_HASH" | head -30 || true
           objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
 
       - name: Package
@@ -68,11 +69,11 @@ jobs:
           cp retroarch.exe dist/retroarch-ra.exe
           ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
           git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
-          printf '%s\n' 'Put RA_Integration-x64.dll next to retroarch-ra.exe.' 'This build writes RA_DIAG.txt while loading RetroAchievements/RAIntegration.' > dist/README_RA.txt
+          printf '%s\n' 'Put RA_Integration-x64.dll or RA_Integration.dll next to retroarch-ra.exe.' 'This build invokes RAIntegration legacy _RA_IdentifyHash on unknown games to display Unknown Title.' 'No game activation is forced by this fallback.' > dist/README_RA.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RetroArch-RAIntegration-x64
+          name: RetroArch-RAIntegration-x64-UnknownTitle
           path: RetroArch/dist/
           retention-days: 7
