@@ -71,14 +71,19 @@ jobs:
           make -j"$(nproc)" info all
           test -f retroarch.exe
 
-      - name: Verify v8
+      - name: Verify v9
         shell: msys2 {0}
         working-directory: RetroArch
         run: |
           echo '--- RetroArch markers ---'
-          strings retroarch.exe | grep -E "_RA_IdentifyHashCompatibility|COMPAT_IDENTIFY_HASH|UNKNOWN_GAME_COMPAT_FLOW" | head -30
-          echo '--- RAIntegration custom export ---'
-          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -E "_RA_IdentifyHashCompatibility|_RA_IdentifyHash|_RA_ActivateGame" | head -30
+          strings retroarch.exe | grep -E "LEGACY_IDENTIFY_HASH|UNKNOWN_GAME_LEGACY_FLOW|LEGACY_RESUME_AFTER_LOGIN" | head -30
+          echo '--- RAIntegration standard exports ---'
+          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -E "_RA_IdentifyHash|_RA_ActivateGame|_RA_UserName" | head -30
+          echo '--- Ensure removed v8 custom export is absent ---'
+          if objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -q "_RA_IdentifyHashCompatibility"; then
+            echo 'Unexpected v8 custom export still present'
+            exit 1
+          fi
           objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
 
       - name: Package
@@ -93,17 +98,18 @@ jobs:
           git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
           git -C ../RAIntegrationSDK rev-parse HEAD > dist/RAINTEGRATION_SOURCE_COMMIT.txt
           printf '%s\n' \
-            'V8 Compatibility Test autorecall build.' \
+            'V9 safe Compatibility Test autorecall build.' \
             'Replace BOTH retroarch-ra.exe and RA_Integration.dll together.' \
             'First unknown ROM: select the correct title and press Test.' \
-            'Later launches: the Test association is recalled automatically in CompatibilityTest mode.' \
+            'Later launches: RAIntegration standard IdentifyHash recalls the saved Test association.' \
+            'No custom IdentifyHash export is used.' \
             'This build does not use Link and does not register unknown hashes on RetroAchievements.' \
-            'CompatibilityTest mode prevents achievements and leaderboards from being earned/submitted for the unknown hash.' \
+            'Saved associations remain in CompatibilityTest mode, so achievements/leaderboards are not earned/submitted for the unknown hash.' \
             > dist/README_RA.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RetroArch-RAIntegration-v8-CompatAutoRecall
+          name: RetroArch-RAIntegration-v9-SafeCompatAutoRecall
           path: RetroArch/dist/
           retention-days: 7
