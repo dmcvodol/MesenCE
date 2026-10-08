@@ -21,13 +21,31 @@ jobs:
           git clone --depth 1 https://github.com/libretro/RetroArch.git RetroArch
           git -C RetroArch rev-parse HEAD
 
-      - name: Patch RetroArch
+      - name: Clone RAIntegration
+        shell: pwsh
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/RetroAchievements/RAIntegration.git RAIntegrationSDK
+          git -C RAIntegrationSDK rev-parse HEAD
+
+      - name: Patch RetroArch and RAIntegration
         shell: pwsh
         run: |
           python tools/retroarch_ra_patch.py
           python tools/retroarch_ra_diag_patch.py
           python tools/retroarch_ra_unknown_fallback_patch.py
+          python tools/raintegration_compat_autorecall_patch.py
           git -C RetroArch diff --check
+          git -C RAIntegrationSDK diff --check
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build RAIntegration x64
+        shell: pwsh
+        working-directory: RAIntegrationSDK
+        run: |
+          msbuild.exe RA_Integration.sln -t:RA_Integration -p:Configuration=Release -p:Platform=x64 -m
+          if (!(Test-Path 'bin\x64\Release\RA_Integration.dll')) { throw 'RA_Integration.dll was not produced' }
 
       - name: Set up MSYS2 MINGW64
         uses: msys2/setup-msys2@v2
@@ -41,23 +59,26 @@ jobs:
             cc:p
             gettext:p
 
-      - name: Configure
+      - name: Configure RetroArch
         shell: msys2 {0}
         working-directory: RetroArch
         run: ./configure
 
-      - name: Build
+      - name: Build RetroArch
         shell: msys2 {0}
         working-directory: RetroArch
         run: |
           make -j"$(nproc)" info all
           test -f retroarch.exe
 
-      - name: Verify
+      - name: Verify v8
         shell: msys2 {0}
         working-directory: RetroArch
         run: |
-          strings retroarch.exe | grep -E "RAIntegration|_RA_IdentifyHash|LEGACY_IDENTIFY_HASH" | head -30 || true
+          echo '--- RetroArch markers ---'
+          strings retroarch.exe | grep -E "_RA_IdentifyHashCompatibility|COMPAT_IDENTIFY_HASH|UNKNOWN_GAME_COMPAT_FLOW" | head -30
+          echo '--- RAIntegration custom export ---'
+          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration.dll | grep -E "_RA_IdentifyHashCompatibility|_RA_IdentifyHash|_RA_ActivateGame" | head -30
           objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
 
       - name: Package
@@ -67,13 +88,22 @@ jobs:
           rm -rf dist
           mkdir -p dist
           cp retroarch.exe dist/retroarch-ra.exe
+          cp ../RAIntegrationSDK/bin/x64/Release/RA_Integration.dll dist/RA_Integration.dll
           ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
           git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
-          printf '%s\n' 'Put RA_Integration-x64.dll or RA_Integration.dll next to retroarch-ra.exe.' 'This build invokes RAIntegration legacy _RA_IdentifyHash on unknown games to display Unknown Title.' 'No game activation is forced by this fallback.' > dist/README_RA.txt
+          git -C ../RAIntegrationSDK rev-parse HEAD > dist/RAINTEGRATION_SOURCE_COMMIT.txt
+          printf '%s\n' \
+            'V8 Compatibility Test autorecall build.' \
+            'Replace BOTH retroarch-ra.exe and RA_Integration.dll together.' \
+            'First unknown ROM: select the correct title and press Test.' \
+            'Later launches: the Test association is recalled automatically in CompatibilityTest mode.' \
+            'This build does not use Link and does not register unknown hashes on RetroAchievements.' \
+            'CompatibilityTest mode prevents achievements and leaderboards from being earned/submitted for the unknown hash.' \
+            > dist/README_RA.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RetroArch-RAIntegration-x64-UnknownTitle
+          name: RetroArch-RAIntegration-v8-CompatAutoRecall
           path: RetroArch/dist/
           retention-days: 7
