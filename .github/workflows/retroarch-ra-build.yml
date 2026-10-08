@@ -24,7 +24,7 @@ jobs:
           git -C RAIntegrationSDK describe --tags --exact-match
           if ((git -C RAIntegrationSDK describe --tags --exact-match) -ne 'RAIntegration.1.4.2') { throw 'Wrong RAIntegration source tag' }
 
-      - name: Patch deferred UI Compatibility Test autorecall
+      - name: Patch pre-dialog Compatibility Test autorecall
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -33,7 +33,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git -C RAIntegrationSDK diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git -C RAIntegrationSDK diff -- src/ui/viewmodels/UnknownGameViewModel.cpp
+          git -C RAIntegrationSDK diff -- src/services/GameIdentifier.cpp
 
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -47,7 +47,7 @@ jobs:
           msbuild.exe RA_Integration.sln -t:RA_Integration -p:Configuration=Release -p:Platform=x64 -m
           if (!(Test-Path 'bin\x64\Release\RA_Integration-x64.dll')) { throw 'RA_Integration-x64.dll was not produced' }
 
-      - name: Verify v12 DLL
+      - name: Verify v13 DLL
         shell: pwsh
         working-directory: RAIntegrationSDK
         run: |
@@ -59,7 +59,7 @@ jobs:
           Get-FileHash $dll -Algorithm SHA256 | Format-List
           if ($info.ProductVersion -notmatch '^1\.4\.2') { throw "Expected RAIntegration 1.4.2, got $($info.ProductVersion)" }
 
-      - name: Package v12 DLL-only test
+      - name: Package v13 DLL-only test
         shell: pwsh
         working-directory: RAIntegrationSDK
         run: |
@@ -68,14 +68,13 @@ jobs:
           git rev-parse HEAD | Out-File -Encoding ascii 'dist\RAINTEGRATION_SOURCE_COMMIT.txt'
           'RAIntegration.1.4.2' | Out-File -Encoding ascii 'dist\RAINTEGRATION_SOURCE_TAG.txt'
           @(
-            'V12 DLL-only deferred-UI Compatibility Test autorecall build.',
+            'V13 DLL-only pre-dialog Compatibility Test autorecall build.',
             'Base: exact official RAIntegration 1.4.2 x64 source.',
             'Keep the already-working v7 retroarch-ra.exe unchanged.',
             'Back up the working RA_Integration.dll before testing.',
-            'Replace ONLY RA_Integration.dll with this v12 DLL.',
-            'A remembered Unknown Title -> Test association is detected after the title list is ready.',
-            'Auto-Test completion is deferred until the asynchronous title-list callback has returned.',
-            'The final close is performed only on the UI thread.',
+            'Replace ONLY RA_Integration.dll with this v13 DLL.',
+            'If ResolveHash reports Unknown, a previously saved Unknown Title -> Test mapping is checked before the modal/title-list async path starts.',
+            'When remembered, the GameID is returned immediately in CompatibilityTest mode and Unknown Title is never shown.',
             'No Link operation is used and the unknown hash is not registered on RetroAchievements.',
             'Achievements and leaderboards are not earned/submitted for the unknown hash in CompatibilityTest mode.'
           ) | Out-File -Encoding utf8 'dist\README_RA.txt'
@@ -83,6 +82,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RAIntegration-v12-1.4.2-DeferredUI-CompatAutoRecall-DLL
+          name: RAIntegration-v13-1.4.2-PreDialog-CompatAutoRecall-DLL
           path: RAIntegrationSDK/dist/
           retention-days: 7
