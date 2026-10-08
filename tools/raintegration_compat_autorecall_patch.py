@@ -15,12 +15,25 @@ def patch(path, old, new, label):
     print(f'[RAIntegration] {label}')
 
 
-# v11 approach:
-# Do not try to recall the saved Test mapping early from GameIdentifier::IdentifyHash.
-# On the user's working 1.4.2 DLL, the Unknown Title dialog already proves that
-# CheckForPreviousAssociation() can successfully read the saved hash->GameID mapping.
-# When that association resolves to an actual title, automatically convert the
-# dialog into the same Compatibility Test result as pressing Test manually.
+# v12 approach:
+# The remembered Test association is only auto-completed after the asynchronous
+# title-list callback has fully returned. v11 called SetDialogResult(OK) from
+# inside that callback, which could destroy the modal/viewmodel while the
+# callback still held an AsyncKeepAlive. v12 hops through a detached worker and
+# then queues the completion back to the UI thread. If UI dispatch is unavailable,
+# the safety check leaves the dialog open instead of closing it from a wrong thread.
+
+patch(
+    'src/ui/viewmodels/UnknownGameViewModel.cpp',
+    '''#include "services\\ServiceLocator.hh"\n\n#include "ui\\viewmodels\\MessageBoxViewModel.hh"\n''',
+    '''#include "services\\ServiceLocator.hh"\n\n#include "ui\\IDesktop.hh"\n#include "ui\\viewmodels\\MessageBoxViewModel.hh"\n''',
+    'include IDesktop for deferred UI completion')
+
+patch(
+    'src/ui/viewmodels/UnknownGameViewModel.cpp',
+    '''#include <rcheevos\\src\\rc_client_internal.h>\n\nnamespace ra {\n''',
+    '''#include <rcheevos\\src\\rc_client_internal.h>\n\n#include <thread>\n\nnamespace ra {\n''',
+    'include thread for one-shot deferred dispatch')
 
 patch(
     'src/ui/viewmodels/UnknownGameViewModel.cpp',
@@ -31,7 +44,7 @@ patch(
 patch(
     'src/ui/viewmodels/UnknownGameViewModel.cpp',
     '''    const auto nId = GetPreviousAssociation(sHash);\n    if (nId != 0)\n    {\n        const auto& sGameName = m_vGameTitles.GetLabelForId(nId);\n        if (!sGameName.empty())\n            SetSelectedGameId(nId);\n    }\n}\n''',
-    '''    const auto nId = GetPreviousAssociation(sHash);\n    if (nId != 0)\n    {\n        const auto& sGameName = m_vGameTitles.GetLabelForId(nId);\n        if (!sGameName.empty())\n        {\n            // The user previously chose Unknown Title -> Test for this exact hash.\n            // At this point the title list and console context are fully initialized,\n            // so reproduce the non-earning compatibility-test path automatically.\n            SetSelectedGameId(nId);\n            SetTestMode(true);\n            AddClientHash(ra::util::String::Narrow(sHash), nId, true);\n            SetDialogResult(ra::ui::DialogResult::OK);\n        }\n    }\n}\n''',
-    'auto-complete remembered Unknown Title mapping as Compatibility Test')
+    '''    const auto nId = GetPreviousAssociation(sHash);\n    if (nId != 0)\n    {\n        const auto& sGameName = m_vGameTitles.GetLabelForId(nId);\n        if (!sGameName.empty())\n        {\n            SetSelectedGameId(nId);\n\n            const auto sNarrowHash = ra::util::String::Narrow(sHash);\n            auto pAsyncHandle = CreateAsyncHandle();\n            auto* pThis = this;\n\n            // Do not close the modal from inside the title-list callback.\n            // Hop to a worker first; InvokeOnUIThread will then enqueue the\n            // completion behind the callback that is currently finishing.\n            std::thread([pThis, nId, sNarrowHash, pAsyncHandle]() {\n                auto& pDesktop = ra::services::ServiceLocator::Get<ra::ui::IDesktop>();\n                pDesktop.InvokeOnUIThread([pThis, nId, sNarrowHash, pAsyncHandle]() {\n                    ra::data::AsyncKeepAlive pKeepAlive(*pAsyncHandle);\n                    if (pAsyncHandle->IsDestroyed())\n                        return;\n\n                    const auto& pDesktop2 = ra::services::ServiceLocator::Get<ra::ui::IDesktop>();\n                    if (!pDesktop2.IsOnUIThread())\n                        return;\n\n                    // If the user changed the selection/hash before this queued\n                    // action ran, don't force the remembered mapping.\n                    if (pThis->GetSelectedGameId() != nId ||\n                        ra::util::String::Narrow(pThis->GetChecksum()) != sNarrowHash)\n                    {\n                        return;\n                    }\n\n                    pThis->SetTestMode(true);\n                    AddClientHash(sNarrowHash, nId, true);\n                    pThis->SetDialogResult(ra::ui::DialogResult::OK);\n                });\n            }).detach();\n        }\n    }\n}\n''',
+    'defer remembered Test completion until after async callback returns')
 
-print('RAIntegration v11 late-dialog CompatibilityTest autorecall patch applied.')
+print('RAIntegration v12 deferred-UI CompatibilityTest autorecall patch applied.')
