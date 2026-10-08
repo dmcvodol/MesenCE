@@ -45,7 +45,7 @@ jobs:
         working-directory: RAIntegrationSDK
         run: |
           msbuild.exe RA_Integration.sln -t:RA_Integration -p:Configuration=Release -p:Platform=x64 -m
-          if (!(Test-Path 'bin\x64\Release\RA_Integration.dll')) { throw 'RA_Integration.dll was not produced' }
+          if (!(Test-Path 'bin\x64\Release\RA_Integration-x64.dll')) { throw 'RA_Integration-x64.dll was not produced' }
 
       - name: Set up MSYS2 MINGW64
         uses: msys2/setup-msys2@v2
@@ -78,7 +78,7 @@ jobs:
           echo '--- RetroArch markers ---'
           strings retroarch.exe | grep -E "_RA_IdentifyHashCompatibility|COMPAT_IDENTIFY_HASH|UNKNOWN_GAME_COMPAT_FLOW" | head -30
           echo '--- RAIntegration custom export ---'
-          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration.dll | grep -E "_RA_IdentifyHashCompatibility|_RA_IdentifyHash|_RA_ActivateGame" | head -30
+          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -E "_RA_IdentifyHashCompatibility|_RA_IdentifyHash|_RA_ActivateGame" | head -30
           objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
 
       - name: Package
@@ -88,7 +88,7 @@ jobs:
           rm -rf dist
           mkdir -p dist
           cp retroarch.exe dist/retroarch-ra.exe
-          cp ../RAIntegrationSDK/bin/x64/Release/RA_Integration.dll dist/RA_Integration.dll
+          cp ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll dist/RA_Integration.dll
           ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
           git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
           git -C ../RAIntegrationSDK rev-parse HEAD > dist/RAINTEGRATION_SOURCE_COMMIT.txt
