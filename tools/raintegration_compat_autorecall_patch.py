@@ -15,18 +15,23 @@ def patch(path, old, new, label):
     print(f'[RAIntegration] {label}')
 
 
-# Safer v9 approach:
-# keep RetroArch on the standard _RA_IdentifyHash export and only teach
-# RAIntegration's existing IdentifyHash() path to recall a mapping that was
-# previously created by Unknown Title -> Test.
-#
-# BeginTest() is the only path that writes these per-hash mappings, and the
-# existing IdentifyHash() code already marks any FindCompatibilityMatch result
-# as CompatibilityTest mode before _RA_ActivateGame is called.
-patch(
-    'src/services/GameIdentifier.cpp',
-    '''static unsigned int FindCompatibilityMatch(const std::string& sHash)\n{\n    const auto& pGameContext = ra::services::ServiceLocator::Get<ra::data::context::GameContext>();\n    if (pGameContext.GetMode() != ra::data::context::GameContext::Mode::CompatibilityTest)\n        return 0;\n\n    const auto nGameId = ra::ui::viewmodels::UnknownGameViewModel::GetPreviousAssociation(ra::util::String::Widen(sHash));\n    if (nGameId != pGameContext.GameId())\n        return 0;\n\n    return nGameId;\n}\n''',
-    '''static unsigned int FindCompatibilityMatch(const std::string& sHash)\n{\n    // Unknown Title -> Test stores an encoded per-hash association locally.\n    // Recalling it here is safe because IdentifyHash() handles this return value\n    // by explicitly setting m_nPendingMode to CompatibilityTest.\n    const auto nGameId = ra::ui::viewmodels::UnknownGameViewModel::GetPreviousAssociation(\n        ra::util::String::Widen(sHash));\n\n    if (nGameId != 0U)\n        RA_LOG_INFO("Auto-recalling saved compatibility test game ID %u for hash %s", nGameId, sHash);\n\n    return nGameId;\n}\n''',
-    'autorecall saved Test mapping inside standard IdentifyHash')
+# v11 approach:
+# Do not try to recall the saved Test mapping early from GameIdentifier::IdentifyHash.
+# On the user's working 1.4.2 DLL, the Unknown Title dialog already proves that
+# CheckForPreviousAssociation() can successfully read the saved hash->GameID mapping.
+# When that association resolves to an actual title, automatically convert the
+# dialog into the same Compatibility Test result as pressing Test manually.
 
-print('RAIntegration v9 standard IdentifyHash CompatibilityTest autorecall patch applied.')
+patch(
+    'src/ui/viewmodels/UnknownGameViewModel.cpp',
+    '''void UnknownGameViewModel::CheckForPreviousAssociation()\n{\n''',
+    '''static void AddClientHash(const std::string& sHash, uint32_t nGameId, bool isUnknown);\n\nvoid UnknownGameViewModel::CheckForPreviousAssociation()\n{\n''',
+    'forward declare AddClientHash before previous-association check')
+
+patch(
+    'src/ui/viewmodels/UnknownGameViewModel.cpp',
+    '''    const auto nId = GetPreviousAssociation(sHash);\n    if (nId != 0)\n    {\n        const auto& sGameName = m_vGameTitles.GetLabelForId(nId);\n        if (!sGameName.empty())\n            SetSelectedGameId(nId);\n    }\n}\n''',
+    '''    const auto nId = GetPreviousAssociation(sHash);\n    if (nId != 0)\n    {\n        const auto& sGameName = m_vGameTitles.GetLabelForId(nId);\n        if (!sGameName.empty())\n        {\n            // The user previously chose Unknown Title -> Test for this exact hash.\n            // At this point the title list and console context are fully initialized,\n            // so reproduce the non-earning compatibility-test path automatically.\n            SetSelectedGameId(nId);\n            SetTestMode(true);\n            AddClientHash(ra::util::String::Narrow(sHash), nId, true);\n            SetDialogResult(ra::ui::DialogResult::OK);\n        }\n    }\n}\n''',
+    'auto-complete remembered Unknown Title mapping as Compatibility Test')
+
+print('RAIntegration v11 late-dialog CompatibilityTest autorecall patch applied.')
