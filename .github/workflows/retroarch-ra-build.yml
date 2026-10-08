@@ -1,4 +1,4 @@
-name: RetroArch RAIntegration x64 Build
+name: RAIntegration 1.4.2 Compatibility AutoRecall x64
 
 on:
   push:
@@ -10,106 +10,78 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - name: Checkout helper
         uses: actions/checkout@v5
 
-      - name: Clone RetroArch
+      - name: Clone exact RAIntegration 1.4.2
         shell: pwsh
         run: |
-          git clone --depth 1 https://github.com/libretro/RetroArch.git RetroArch
-          git -C RetroArch rev-parse HEAD
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          git clone --depth 1 --branch RAIntegration.1.4.2 --recurse-submodules --shallow-submodules https://github.com/RetroAchievements/RAIntegration.git RAIntegrationSDK
+          git -C RAIntegrationSDK describe --tags --exact-match
+          if ((git -C RAIntegrationSDK describe --tags --exact-match) -ne 'RAIntegration.1.4.2') { throw 'Wrong RAIntegration source tag' }
 
-      - name: Clone RAIntegration
+      - name: Patch only Compatibility Test autorecall
         shell: pwsh
         run: |
-          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/RetroAchievements/RAIntegration.git RAIntegrationSDK
-          git -C RAIntegrationSDK rev-parse HEAD
-
-      - name: Patch RetroArch and RAIntegration
-        shell: pwsh
-        run: |
-          python tools/retroarch_ra_patch.py
-          python tools/retroarch_ra_diag_patch.py
-          python tools/retroarch_ra_unknown_fallback_patch.py
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python tools/raintegration_compat_autorecall_patch.py
-          git -C RetroArch diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git -C RAIntegrationSDK diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C RAIntegrationSDK diff -- src/services/GameIdentifier.cpp
 
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build RAIntegration x64
+      - name: Build patched RAIntegration 1.4.2 x64
         shell: pwsh
         working-directory: RAIntegrationSDK
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           msbuild.exe RA_Integration.sln -t:RA_Integration -p:Configuration=Release -p:Platform=x64 -m
           if (!(Test-Path 'bin\x64\Release\RA_Integration-x64.dll')) { throw 'RA_Integration-x64.dll was not produced' }
 
-      - name: Set up MSYS2 MINGW64
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel
-            git
-          pacboy: >-
-            cc:p
-            gettext:p
-
-      - name: Configure RetroArch
-        shell: msys2 {0}
-        working-directory: RetroArch
-        run: ./configure
-
-      - name: Build RetroArch
-        shell: msys2 {0}
-        working-directory: RetroArch
+      - name: Verify v10 DLL
+        shell: pwsh
+        working-directory: RAIntegrationSDK
         run: |
-          make -j"$(nproc)" info all
-          test -f retroarch.exe
+          $dll = Resolve-Path 'bin\x64\Release\RA_Integration-x64.dll'
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll)
+          Write-Host "FileVersion=$($info.FileVersion)"
+          Write-Host "ProductVersion=$($info.ProductVersion)"
+          Write-Host "Size=$((Get-Item $dll).Length)"
+          Get-FileHash $dll -Algorithm SHA256 | Format-List
+          if ($info.ProductVersion -notmatch '^1\.4\.2') { throw "Expected RAIntegration 1.4.2, got $($info.ProductVersion)" }
 
-      - name: Verify v9
-        shell: msys2 {0}
-        working-directory: RetroArch
+      - name: Package v10 DLL-only test
+        shell: pwsh
+        working-directory: RAIntegrationSDK
         run: |
-          echo '--- RetroArch markers ---'
-          strings retroarch.exe | grep -E "LEGACY_IDENTIFY_HASH|UNKNOWN_GAME_LEGACY_FLOW|LEGACY_RESUME_AFTER_LOGIN" | head -30
-          echo '--- RAIntegration standard exports ---'
-          objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -E "_RA_IdentifyHash|_RA_ActivateGame|_RA_UserName" | head -30
-          echo '--- Ensure removed v8 custom export is absent ---'
-          if objdump -p ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll | grep -q "_RA_IdentifyHashCompatibility"; then
-            echo 'Unexpected v8 custom export still present'
-            exit 1
-          fi
-          objdump -p retroarch.exe | grep -E "DLL Name|Subsystem" | head -80
-
-      - name: Package
-        shell: msys2 {0}
-        working-directory: RetroArch
-        run: |
-          rm -rf dist
-          mkdir -p dist
-          cp retroarch.exe dist/retroarch-ra.exe
-          cp ../RAIntegrationSDK/bin/x64/Release/RA_Integration-x64.dll dist/RA_Integration.dll
-          ldd retroarch.exe | grep "$MINGW_PREFIX" | awk '{print $3}' | xargs -r -I {} cp {} dist/ || true
-          git rev-parse HEAD > dist/RETROARCH_SOURCE_COMMIT.txt
-          git -C ../RAIntegrationSDK rev-parse HEAD > dist/RAINTEGRATION_SOURCE_COMMIT.txt
-          printf '%s\n' \
-            'V9 safe Compatibility Test autorecall build.' \
-            'Replace BOTH retroarch-ra.exe and RA_Integration.dll together.' \
-            'First unknown ROM: select the correct title and press Test.' \
-            'Later launches: RAIntegration standard IdentifyHash recalls the saved Test association.' \
-            'No custom IdentifyHash export is used.' \
-            'This build does not use Link and does not register unknown hashes on RetroAchievements.' \
-            'Saved associations remain in CompatibilityTest mode, so achievements/leaderboards are not earned/submitted for the unknown hash.' \
-            > dist/README_RA.txt
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item 'bin\x64\Release\RA_Integration-x64.dll' 'dist\RA_Integration.dll'
+          git rev-parse HEAD | Out-File -Encoding ascii 'dist\RAINTEGRATION_SOURCE_COMMIT.txt'
+          'RAIntegration.1.4.2' | Out-File -Encoding ascii 'dist\RAINTEGRATION_SOURCE_TAG.txt'
+          @(
+            'V10 DLL-only Compatibility Test autorecall build.',
+            'Base: exact official RAIntegration 1.4.2 x64 source.',
+            'Keep the already-working v7 retroarch-ra.exe unchanged.',
+            'Back up the working RA_Integration.dll before testing.',
+            'Replace ONLY RA_Integration.dll with this v10 DLL.',
+            'Unknown Title -> Test associations are recalled locally.',
+            'The recalled association remains CompatibilityTest mode.',
+            'No Link operation is used and the unknown hash is not registered on RetroAchievements.',
+            'Achievements and leaderboards are not earned/submitted for the unknown hash in CompatibilityTest mode.'
+          ) | Out-File -Encoding utf8 'dist\README_RA.txt'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RetroArch-RAIntegration-v9-SafeCompatAutoRecall
-          path: RetroArch/dist/
+          name: RAIntegration-v10-1.4.2-CompatAutoRecall-DLL
+          path: RAIntegrationSDK/dist/
           retention-days: 7
